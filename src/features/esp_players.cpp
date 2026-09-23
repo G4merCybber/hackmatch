@@ -335,40 +335,34 @@ il2cpp::Object* EspPlayers::active_camera()
 {
     il2cpp::Object* camera = nullptr;
     il2cpp::Object* exception = nullptr;
+    
+    // Если мы живы, берем камеру из нашего PlayerController по полю "cam"
     if (alive(local_) && player_camera_)
         il2cpp::read_field(local_, player_camera_, &camera);
+        
+    // ЕСЛИ МЫ МЕРТВЫ (Ремонт ESP): вытаскиваем камеру по офсету 0x20 из DeathCameraController
+    if (!alive(camera))
+    {
+        il2cpp::Class* death_cam_class = il2cpp::klass("Assembly-CSharp", "", "DeathCameraController");
+        if (death_cam_class)
+        {
+            il2cpp::FieldInfo* instance_field = il2cpp::field(death_cam_class, "Instance");
+            il2cpp::Object* death_cam_instance = nullptr;
+            if (instance_field && il2cpp::read_static_field(instance_field, &death_cam_instance) && death_cam_instance)
+            {
+                // Смещение 0x20 из твоего дампа для поля private Camera cam;
+                camera = *reinterpret_cast<il2cpp::Object**>(reinterpret_cast<char*>(death_cam_instance) + 0x20);
+            }
+        }
+    }
+
+    // Если всё еще не нашли, падаем на стандартные методы Unity
     if (!alive(camera))
         camera = il2cpp::runtime_invoke(get_current_camera_, nullptr, nullptr, &exception);
     if (!alive(camera))
-    {
-        exception = nullptr;
         camera = il2cpp::runtime_invoke(get_main_camera_, nullptr, nullptr, &exception);
-    }
-    return alive(camera) && !exception ? camera : nullptr;
-}
-
-bool EspPlayers::world_to_screen(il2cpp::Object* camera, const Vec3& world, ImVec2& out, bool& in_front)
-{
-    if (!camera)
-        return false;
-
-    void* args[] = {const_cast<Vec3*>(&world)};
-    il2cpp::Object* exception = nullptr;
-    il2cpp::Object* boxed = il2cpp::runtime_invoke(world_to_screen_, camera, args, &exception);
-    if (!boxed || exception)
-    {
-        return false;
-    }
-
-    Vec3 screen = unbox<Vec3>(boxed);
-    const ImVec2 display = ImGui::GetIO().DisplaySize;
-    out = {screen.x, display.y - screen.y};
-    in_front = screen.z > 0.01f;
-    if (!in_front)
-    {
-        out = {display.x - out.x, display.y - out.y};
-    }
-    return std::isfinite(out.x) && std::isfinite(out.y);
+        
+    return alive(camera) ? camera : nullptr;
 }
 
 bool EspPlayers::scan_players()
